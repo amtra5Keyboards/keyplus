@@ -3,6 +3,8 @@
 # Copyright 2017 jem@seethis.link
 # Licensed under the MIT license (http://opensource.org/licenses/MIT)
 
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 from layout.keycodes import *
 from layout.common import *
 
@@ -110,7 +112,7 @@ key_symbols = {
     "kp_0": KC_KP_0,
     "kp_.": KC_KP_PERIOD,
     "iso\\": KC_ISO_BACK_SLASH,
-    "application": KC_APPLICATION, "app": KC_APPLICATION,
+    "application": KC_APPLICATION, "app": KC_APPLICATION, "menu": KC_APPLICATION,
     "power": KC_POWER,
     "kp_=": KC_KP_EQUAL,
     "f13": KC_F13,
@@ -127,7 +129,7 @@ key_symbols = {
     "f24": KC_F24,
     "execute": KC_EXECUTE,
     "help": KC_HELP,
-    "menu": KC_MENU,
+    "hid_menu": KC_MENU,
     "select": KC_SELECT,
     "stop": KC_STOP,
     "again": KC_AGAIN,

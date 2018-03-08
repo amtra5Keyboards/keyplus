@@ -15,10 +15,17 @@
 /// Max number of keys a split keyboard device can use (16 bytes)
 #define MAX_NUM_KEYS 128
 
+/// Size of the bitmap used to store key numbers
+#define KEY_NUMBER_BITMAP_SIZE (MAX_NUM_KEYS/8)
+
 /// Max number of rows allowed for the matrix scanner
 #define MAX_NUM_ROWS 10
+#define MAX_NUM_COLS IO_MAP_GPIO_COUNT
+
 /// How much ram is needed to store the matrix in the matrix scanner module
 #define MATRIX_DATA_SIZE ((MAX_NUM_ROWS) * (IO_PORT_COUNT))
+
+#define INVALID_KEY_NUMBER 0xff
 
 /// Different scanning methods that can be loaded from the configuration file
 typedef enum matrix_scanner_mode_t {
@@ -34,29 +41,27 @@ typedef enum matrix_scanner_mode_t {
 /// The scanning method will be fixed at compile time, and the flasher software
 /// needs to know what format the device uses to correctly load pin configuration.
 typedef enum matrix_internal_scan_method_t {
-    ///< No matrix scanning supported
+    /// No matrix scanning supported
     MATRIX_SCANNER_INTERNAL_NONE = 0x00,
-    ///< The FAST_ROW_COL scanner uses a lookup table to map (port, pin) pairs
-    ///< to key numbers. When used the flasher has to provide a lookup table
-    ///< that contains `num_rows * max_col_pin_num` key numbers for each pin.
-    ///< Unused (port, pin) pairs should map to key number 0.
+    /// The FAST_ROW_COL scanner uses a lookup table to map (port, pin) pairs
+    /// to key numbers. When used the flasher has to provide a lookup table
+    /// that contains `num_rows * max_col_pin_num` key numbers for each pin.
     ///
-    ///< Also, instead of providing a list of column keys, it should provide
-    ///< a bit mask for each port indicating which keys are scanned as columns.
+    /// Also, instead of providing a list of column keys, it should provide
+    /// a bit mask for each port indicating which keys are scanned as columns.
     MATRIX_SCANNER_INTERNAL_FAST_ROW_COL = 0x01,
-    ///< The SLOW_ROW_COL scanner uses a list of rows and columns, and scans
-    ///< each pin one after the other. The flasher should provide both
-    ///< the row and column keys as a list of pins. The key number map will be
-    ///< `num_rows * num_columns` large with one entry for each (row, col) pair.
-    ///< Unused (row, col) pairs should map to key number 0.
+    /// The SLOW_ROW_COL scanner uses a list of rows and columns, and scans
+    /// each pin one after the other. The flasher should provide both
+    /// the row and column keys as a list of pins. The key number map will be
+    /// `num_rows * num_columns` large with one entry for each (row, col) pair.
     MATRIX_SCANNER_INTERNAL_SLOW_ROW_COL = 0x02,
-    ///< The matrix scanning algorithm is hard coded.
-    ///<
-    ///< TODO: decide how the keys are remapped in this case. The key numbers
-    ///< should still be remappable though.
+    /// The matrix scanning algorithm is hard coded.
+    ///
+    /// TODO: decide how the keys are remapped in this case. The key numbers
+    /// should still be remappable though.
     MATRIX_SCANNER_INTERNAL_HARD_CODED = 0x03,
     // MATRIX_SCANNER_INTERNAL_IO_EXPANDER = 0x04,
-    ///< The matrix
+    /// The matrix
     MATRIX_SCANNER_INTERNAL_CUSTOM = 0xff,
 } matrix_internal_scan_method_t;
 
@@ -69,11 +74,11 @@ typedef struct matrix_scan_plan_t {
     uint8_t trigger_time_press; ///< The key must be down this long before being registered (ms)
     uint8_t trigger_time_release; ///< The key must be up this long before being registered (ms)
 
-    ///< How long to hold a row low before reading the columns. Measured on a
-    ///< scale of 0-48μs.
+    /// How long to hold a row low before reading the columns. Measured on a
+    /// scale of 0-48μs.
     uint8_t parasitic_discharge_delay_idle;
-    ///< How long to hold a row low before reading the column pins while a key
-    ///< is being debounced. Measured on a scale of 0-48μs.
+    /// How long to hold a row low before reading the column pins while a key
+    /// is being debounced. Measured on a scale of 0-48μs.
     uint8_t parasitic_discharge_delay_debouncing;
     uint8_t max_col_pin_num; ///< The largest column pin number used.
     uint8_t max_key_num; ///< The largest key number used.
@@ -84,7 +89,8 @@ typedef struct matrix_scan_plan_t {
  *                         global variables                          *
  *********************************************************************/
 
-extern uint8_t g_matrix[MAX_NUM_ROWS][IO_PORT_COUNT];
+extern XRAM uint8_t g_matrix[MAX_NUM_ROWS][IO_PORT_COUNT];
+extern XRAM uint8_t g_key_num_bitmap[KEY_NUMBER_BITMAP_SIZE];
 
 extern const ROM uint8_t *g_scan_key_map;
 extern XRAM matrix_scan_plan_t g_scan_plan;
@@ -118,12 +124,14 @@ void matrix_scan_irq_clear(void);
 /// Returns true if
 bool matrix_has_active_row(void);
 
-// How many bytes of data is stored in the matrix (i.e. size=ceil(num_physical_keys/8))
+/// How many bytes of data is stored in the matrix (i.e. size=ceil(num_physical_keys/8))
 uint8_t get_matrix_compressed_size(void);
+/// Returns the number of keys currently pressed in the matrix
 uint8_t get_matrix_num_keys_down(void);
+/// Returns the number of keys currently being debounced in the matrix
 uint8_t get_matrix_num_keys_debouncing(void);
 
-// functions to be called to update the key matrix
+/// functions to be called to update the key matrix
 void init_matrix_scanner_utils(void);
 
 /// Get a matrix packet that for the most recent matrix scan.
@@ -166,3 +174,7 @@ bool scanner_debounce_row(
     const uint8_t *new_row,
     uint8_t bytes_per_row
 );
+
+/// If passthrough is enabled, this command will send the key matrix to the
+/// host when it changes.
+void passthrough_keycodes_task(void);

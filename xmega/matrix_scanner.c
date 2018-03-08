@@ -52,7 +52,7 @@ static bool has_scan_irq_triggered;
 
 #if !USE_HARDWARE_SPECIFIC_SCAN
 
-static uint8_t s_col_masks[IO_PORT_COUNT];
+static XRAM uint8_t s_col_masks[IO_PORT_COUNT];
 
 static uint8_t s_row_port_masks[IO_PORT_COUNT];
 static uint8_t s_row_pin_mask[MAX_NUM_ROWS];
@@ -67,6 +67,13 @@ static uint8_t s_parasitic_discharge_delay_debouncing;
 static void setup_columns(void) {
     // Note: DIR: 0 -> input, 1 -> output
 
+    for (uint8_t col_pin_i=0; col_pin_i < g_scan_plan.cols; col_pin_i++) {
+        const uint8_t pin_number = io_map_get_col_pin(col_pin_i);
+        const uint8_t col_port_num = IO_MAP_GET_PIN_PORT(pin_number);
+        const uint8_t col_pin_bit = IO_MAP_GET_PIN_BIT(pin_number);
+        s_col_masks[col_port_num] |= (1 << col_pin_bit);
+    }
+
     // Note: PORTCFG.MPCMASK lets us configure multiple PINnCTRL regs at once
     // It is cleared automatically after any PINnCTRL register is written
     // Note: If MPCMASK=0, then its function is disabled, so writing to PIN0CTRL
@@ -76,7 +83,7 @@ static void setup_columns(void) {
     uint8_t port_ii;
     for (port_ii = 0; port_ii < max_port_num; ++port_ii) {
         io_port_t *port = IO_MAP_GET_PORT(port_ii);
-        uint8_t col_mask = io_map_get_col_port_mask(port_ii);
+        uint8_t col_mask = s_col_masks[port_ii];
 
         // Nothing is set in this col
         if (col_mask == 0) {
@@ -88,8 +95,6 @@ static void setup_columns(void) {
             register_error(ERROR_PIN_MAPPING_CONFLICT);
             return; // return on error
         }
-
-        s_col_masks[port_ii] = col_mask;
 
         // Hardware setup for the pin
         //
@@ -221,6 +226,10 @@ bool matrix_has_active_row(void) {
            (PORTD.IN & s_col_masks[PORT_D_NUM]) ||
            (PORTE.IN & s_col_masks[PORT_E_NUM]) ||
            (PORTR.IN & s_col_masks[PORT_R_NUM]);
+}
+
+port_mask_t get_col_mask(uint8_t port_num) {
+    return s_col_masks[port_num];
 }
 
 /// Selecting a row makes it outputs

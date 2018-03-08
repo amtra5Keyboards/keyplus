@@ -16,16 +16,25 @@ from PySide.QtGui import QIcon, QIntValidator
 from PySide.QtCore import Qt, QBasicTimer, QSize , QFileInfo, QTimer
 from PySide.QtCore import Slot, Signal, QAbstractTableModel
 
+from keyplus.layout import KeyplusLayout
+from keyplus.device_info import KeyboardDeviceTarget, KeyboardFirmwareInfo
+import keyplus.chip_id
+from keyplus import KeyplusKeyboard
+from keyplus.exceptions import *
+
 # TODO: clean up directory structure
 import sys
+import traceback
 import datetime, time, binascii
 import yaml
+import colorama
+import hexdump
 
 import easyhid
 import protocol
 import layout.parser
 import io_map.chip_id as chip_id
-import xusb_boot
+import xusbboot
 
 STATUS_BAR_TIMEOUT=4500
 
@@ -59,9 +68,9 @@ def is_keyplus_device(device):
     return (device.vendor_id, device.product_id) in [(0x6666, 0x1111*i) for i in range(16)]
 
 def is_xusb_bootloader_device(device):
-    # if device.interface_number != xusb_boot.DEFAULT_INTERFACE:
+    # if device.interface_number != xusbboot.DEFAULT_INTERFACE:
     #     return False
-    return (device.vendor_id, device.product_id) == (xusb_boot.DEFAULT_VID, xusb_boot.DEFAULT_PID)
+    return (device.vendor_id, device.product_id) == (xusbboot.DEFAULT_VID, xusbboot.DEFAULT_PID)
 
 def is_nrf24lu1p_bootloader_device(device):
     ID_VENDOR = 0x1915
@@ -163,7 +172,7 @@ class DeviceWidget(QGroupBox):
     def setup_xusb_bootloader_label(self):
         try:
             self.device.open()
-            bootloader_info = xusb_boot.get_boot_info(self.device)
+            bootloader_info = xusbboot.get_boot_info(self.device)
             self.device.close()
         except TimeoutError as err:
             # Incase opening the device fails
@@ -195,7 +204,7 @@ class DeviceWidget(QGroupBox):
     def setup_nrf24lu1p_label(self):
         # try:
         #     self.device.open()
-        #     bootloader_info = xusb_boot.get_boot_info(self.device)
+        #     bootloader_info = xusbboot.get_boot_info(self.device)
         #     self.device.close()
         # except TimeoutError as err:
         #     # Incase opening the device fails
@@ -782,26 +791,15 @@ class Loader(QMainWindow):
         self.setWindowTitle('keyplus layout and firmware loader')
         self.show()
 
-    def process_layout(self, layout_json_obj, layout_file, device_id):
-        try:
-            settings_gen = layout.parser.SettingsGenerator(layout_json_obj, None)
-            layout_data = settings_gen.gen_layout_section(device_id)
-            settings_data = settings_gen.gen_settings_section(device_id)
-            return layout_data, settings_data
-        except (layout.parser.ParseError, layout.parser.ParseKeycodeError) as err:
-            error_msg_box(str(err))
-            self.statusBar().showMessage(
-                'Error parsing "{}"'.format(layout_file),
-                timeout=STATUS_BAR_TIMEOUT*2
-            )
-            return None, None
-
     def abort_update(self, target_device):
         try:
             target_device.close()
         except:
             pass
 
+        self.deviceListWidget.updateList()
+
+    def abort_update2(self):
         self.deviceListWidget.updateList()
 
     @Slot(str)
@@ -821,37 +819,60 @@ class Loader(QMainWindow):
             return
 
         if programmingMode == FileSelector.ScopeLayout:
+            target_device.close()
+            kb = self.tryOpenDevicePath2(device_path)
+
+            if kb == None:
+                return
+
+
             self.statusBar().showMessage("Started updating layout", timeout=STATUS_BAR_TIMEOUT)
 
             layout_file = self.fileSelectorWidget.getLayoutFile()
 
             if layout_file == '':
                 error_msg_box("No layout file given.")
-                self.abort_update(target_device)
-                return
-            else:
-                pass
-
-            layout_json_obj = None
-            with open(layout_file) as file_obj:
-                try:
-                    layout_json_obj = yaml.safe_load(file_obj.read())
-                except Exception as err:
-                    error_msg_box("Syntax error in yaml file: " + str(err))
-                    self.abort_update(target_device)
-                    return
-
-            device_info = protocol.get_device_info(target_device)
-            layout_data, settings_data = self.process_layout(layout_json_obj, layout_file, device_info.id)
-            if layout_data == None or settings_data == None:
                 return
 
-            protocol.update_layout_section(target_device, layout_data)
-            protocol.update_settings_section(target_device, settings_data, keep_rf=True)
-            protocol.reset_device(target_device)
+            try:
+                kp_layout = KeyplusLayout()
+                warnings = []
+                kp_layout.from_yaml_file(layout_file, warnings=warnings)
+                device_target = kb.get_device_target()
+                settings_data = kp_layout.build_settings_section(device_target)
+                layout_data = kp_layout.build_layout_section(device_target)
+            except (KeyplusError, IOError) as err:
+                error_msg_box(str(err))
+                return
+
+            print('#'*80)
+            print("settings_data:", type(settings_data), settings_data)
+            print('#'*80)
+            print("layout_data:", type(layout_data), layout_data)
+            print('#'*80)
+            hexdump.hexdump(bytes(settings_data))
+            hexdump.hexdump(bytes(layout_data))
+
+            with kb:
+                kb.update_settings_section(settings_data, keep_rf=True)
+                kb.update_layout_section(layout_data)
+                kb.reset()
+
+            if warnings != []:
+                error_msg_box(
+                    "The device was programmed successfully, but some "
+                    "non-critical errors were encountered:\n" +
+                    "\n".join([str(warn) for warn in warnings]),
+                    title = "Warnings",
+                )
 
             self.statusBar().showMessage("Finished updating layout", timeout=STATUS_BAR_TIMEOUT)
         elif programmingMode == FileSelector.ScopeDevice:
+            target_device.close()
+            kb = self.tryOpenDevicePath2(device_path)
+            if kb == None:
+                return
+
             layout_file = self.fileSelectorWidget.getRFLayoutFile()
             rf_file = self.fileSelectorWidget.getRFFile()
             target_id = self.fileSelectorWidget.getTargetID()
@@ -871,36 +892,31 @@ class Loader(QMainWindow):
                 self.abort_update(target_device)
                 return
 
-            layout_json_obj = None
-            rf_json_obj = None
-            with open(layout_file) as file_obj:
-                try:
-                    layout_json_obj = yaml.safe_load(file_obj.read())
-                except Exception as err:
-                    error_msg_box("Syntax error in yaml file: " + str(err))
-                    self.abort_update(target_device)
-                    return
-            with open(rf_file) as file_obj:
-                try:
-                    rf_json_obj = yaml.safe_load(file_obj.read())
-                except Exception as err:
-                    error_msg_box("Syntax error in yaml file: " + str(err))
-                    self.abort_update(target_device)
-                    return
-
             try:
-                settings_gen = layout.parser.SettingsGenerator(layout_json_obj, rf_json_obj)
-            except layout.parser.ParseError as err:
-                error_msg_box("Error Generating RF settings data: " + str(err))
+                kp_layout = KeyplusLayout()
+                warnings = []
+                kp_layout.from_yaml_file(layout_file, rf_file, warnings=warnings)
+                device_target = kb.get_device_target()
+                device_target.device_id = target_id
+                settings_data = kp_layout.build_settings_section(device_target)
+                layout_data = kp_layout.build_layout_section(device_target)
+            except (KeyplusError, IOError) as err:
+                error_msg_box(str(err))
                 self.abort_update(target_device)
                 return
 
-            layout_data = settings_gen.gen_layout_section(target_id)
-            settings_data = settings_gen.gen_settings_section(target_id)
+            with kb:
+                kb.update_settings_section(settings_data, keep_rf=False)
+                kb.update_layout_section(layout_data)
+                kb.reset()
 
-            protocol.update_settings_section(target_device, settings_data)
-            protocol.update_layout_section(target_device, layout_data)
-            protocol.reset_device(target_device)
+            if warnings != []:
+                error_msg_box(
+                    "The device was programmed successfully, but some "
+                    "non-critical errors were encountered:\n" +
+                    "\n".join([str(warn) for warn in warnings]),
+                    title = "Warnings",
+                )
 
             self.statusBar().showMessage("Finished updating RF settings", timeout=STATUS_BAR_TIMEOUT)
 
@@ -968,11 +984,26 @@ class Loader(QMainWindow):
 
     def program_xusb_boot_firmware_hex(self, device, file_name):
         try:
-            xusb_boot.write_hexfile(device, file_name)
-        except xusb_boot.BootloaderException as err:
+            xusbboot.write_hexfile(device, file_name)
+        except xusbboot.BootloaderException as err:
             error_msg_box("Error programming the bootloader to hex file: " + str(err))
         finally:
             device.close()
+
+    def tryOpenDevicePath2(self, device_path):
+        try:
+            print(device_path)
+            device = easyhid.Enumeration().find(path=device_path)[0]
+            return KeyplusKeyboard(device)
+        except Exception as err:
+            msg_box(
+                    description="Failed to open device! Check it is still present "
+                    "and you have permission to write to it. ErrorMsg: {}"
+                    .format(err),
+                    title="USB Device write error"
+            )
+            traceback.print_exc(file=sys.stderr)
+            return None
 
     def tryOpenDevicePath(self, device_path):
         try:
@@ -1007,7 +1038,7 @@ class Loader(QMainWindow):
         if is_keyplus_device(device):
             protocol.reset_device(device)
         elif is_xusb_bootloader_device(device):
-            xusb_boot.reset(device)
+            xusbboot.reset(device)
         elif is_nrf24lu1p_bootloader_device(device):
             print("TODO: reset: ", device_path, file=sys.stderr)
         else:
@@ -1154,11 +1185,8 @@ The firmware loader accepts *.hex files. For the latest keyplus firmware see her
 
 
 if __name__ == '__main__':
-    import xusb_boot
-    import easyhid
-    import protocol
-    # import time
-
+    from colorama import Fore, Style
+    colorama.init(convert=False)
     app = QApplication(sys.argv)
     ex = Loader()
     sys.exit(app.exec_())

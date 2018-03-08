@@ -8,6 +8,7 @@
 #include <avr/io.h>
 
 #include "board_config.h"
+#include "xmega_hardware.h"
 
 #define static_delay_us(x) _delay_us(x)
 #define static_delay_ms(x) _delay_ms(x)
@@ -24,7 +25,7 @@
 #define PAGE_SIZE           APP_SECTION_PAGE_SIZE
 
 // define flash pointer sizes
-#if MCU_FLASH_SIZE <= 64
+#if MCU_FLASH_SIZE <= 128
 typedef uint16_t flash_ptr_t;
 typedef uint16_t flash_size_t;
 #else
@@ -69,6 +70,8 @@ typedef PORT_t io_port_t;
 #define PORT_D_USABLE_PINS 0x3f // Can't use 7 and 6 because they are used for USB
 #define PORT_E_USABLE_PINS 0x0f
 #define PORT_R_USABLE_PINS 0x03
+
+#define IO_MAP_GPIO_COUNT (34 - 2)
 
 #ifndef IO_USABLE_PINS
 #define IO_USABLE_PINS { \

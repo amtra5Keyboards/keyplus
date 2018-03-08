@@ -19,8 +19,10 @@
 #define USB_DEVICE_VERSION 0x0000
 #endif
 
+#if !defined(BOOTLOADER_VID) && !defined(BOOTLOADER_PID)
 #define BOOTLOADER_VID 0x6666
 #define BOOTLOADER_PID 0xB007
+#endif
 
 // TODO: move to settings
 // TODO: an option to enter deep sleep when there has been no change in the matrix
@@ -41,7 +43,9 @@
 
 #define SCANNER_MATRIX_DELTA 1
 
+#ifndef INTERNAL_SCAN_METHOD
 #define INTERNAL_SCAN_METHOD (MATRIX_SCANNER_INTERNAL_FAST_ROW_COL)
+#endif
 
 #ifndef RF_POLLING
 #define RF_POLLING 0

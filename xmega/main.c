@@ -64,7 +64,7 @@ void xmega_common_init(void) {
     pin_init();
     settings_load_from_flash();
     aes_key_init(g_rf_settings.ekey, g_rf_settings.dkey);
-    led_testing_set(0);
+    led_testing_set(0, 0);
     matrix_scanner_init();
 }
 
@@ -322,16 +322,11 @@ void usb_mode_main_loop(void) {
 
             keyboard_update_device_matrix(GET_SETTING(device_id), matrix_data);
 
-            if (is_passthrough_enabled()) {
-                // send the raw matrix data to the host
-                queue_vendor_in_packet(
-                    CMD_PASSTHROUGH_MATRIX,
-                    (uint8_t*)g_matrix,
-                    MATRIX_DATA_SIZE,
-                    STATIC_LENGTH_CMD // TODO: make this a variable?
-                );
-            }
         }
+
+        passthrough_keycodes_task();
+
+        //
 
 // #if USE_I2C
         // // check for i2c data
@@ -393,7 +388,6 @@ void usb_mode_main_loop(void) {
 
 NO_RETURN_ATTR void recovery_mode_main_loop(void) {
     while (1) {
-        usb_print((uint8_t*)"Critical Error", sizeof("Critical Error"));
         send_vendor_report();
         handle_vendor_out_reports();
 

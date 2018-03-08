@@ -5,7 +5,7 @@
 # test keyboard layout
 
 name: "test-layout"
-version: 0
+version: 0.3.0
 report_mode: auto_nkro # options: auto_nkro, 6kro, nkro
 
 # NOTE: rf settings and encryption key are stored in a separate file
@@ -153,19 +153,19 @@ devices:
     id: 14
     wireless_split: true
     wireless_mouse: true
-    wired_split: true
+    wired_split: false
     layout: gamma_split
     layout_offset: 0
     scan_mode:
       mode: col_row # options: col_row, pins, none
-      rows: [D0, D1, D2, D3]
-      cols: [A0, A1, A2, A3, A4, A5]
+      rows: [D2, D3, D1, D0]
+      cols: [A2, A1, A0, A3, A4, A5]
       # maps how keys are physically wired, to how they appear visually
       matrix_map: [
-        r2c2, r2c1, r2c0, r2c3, r2c4, r2c5,
-        r3c2, r3c1, r3c0, r3c3, r3c4, r3c5,
-        r1c2, r1c1, r1c0, r1c3, r1c4, r1c5,
-        r0c2, r0c1, r0c0, r0c3, r0c4, r0c5,
+        r0c0, r0c1, r0c2, r0c3, r0c4, r0c5,
+        r1c0, r1c1, r1c2, r1c3, r1c4, r1c5,
+        r2c0, r2c1, r2c2, r2c3, r2c4, r2c5,
+        r3c0, r3c1, r3c2, r3c3, r3c4, r3c5,
       ]
 
   "orange gamma split - right":
@@ -333,7 +333,8 @@ layouts:
       [ # layer 0 (colemak)
         [ # left hand
           tab , q   , w   , f   , p   , g   ,
-          SFTEnt , a   , r   , s   , t   , d   ,
+          # SFTEnt , a   , r   , s   , t   , d   ,
+          ent , a   , r   , s   , t   , d   ,
           lalt, z   , x   , c   , v   , b   ,
           esc , L4  , L4  , lctl  , L3  , spc ,
         ],
