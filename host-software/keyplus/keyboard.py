@@ -123,9 +123,9 @@ def find_devices(name=None, serial_number=None, vid_pid=None, device_id=None,
                 continue
 
             new_kb = KeyplusKeyboard(hid_device)
-            if device_id != None and device_id != new_kb.get_device_id():
+            if device_id != None and device_id != new_kb.device_id:
                 continue
-            if name != None and (name not in new_kb.get_device_name()):
+            if name != None and (name not in new_kb.name):
                 continue
 
             matching_dev_list.append(new_kb)
@@ -175,10 +175,10 @@ class KeyplusKeyboard(object):
 
     def reconnect(self):
         """ Reconnect to a device after it has been reset.  """
-        if self.get_serial_number() not in ["", None]:
+        if self.serial_number not in ["", None]:
             self.hid_device.close()
             new_kb = find_devices(
-                serial_number=self.get_serial_number()
+                serial_number=self.serial_number
             )[0]
             self._copy_device_info(new_kb)
             self.connect()
@@ -192,6 +192,18 @@ class KeyplusKeyboard(object):
         """ Disconnect a device.  """
         self.hid_device.close()
         self._is_connected = False
+
+    @property
+    def device_id(self):
+        return self.device_info.device_id
+
+    @property
+    def name(self):
+        return self.device_info.name
+
+    @property
+    def serial_number(self):
+        return self.hid_device.get_serial_number()
 
 ###############################################################################
 #                                USB Commands                                 #
@@ -576,9 +588,9 @@ class KeyplusKeyboard(object):
         chunk_data = None
         remainder = len(data) % chunk_size
         if remainder != 0:
-            chunk_data = data[:] + bytearray([pad] * (chunk_size - remainder))
+            chunk_data = bytearray(data[:]) + bytearray([pad] * (chunk_size - remainder))
         else:
-            chunk_data = data
+            chunk_data = bytearray(data)
         return [bytes(chunk_data[i*chunk_size:(i+1)*chunk_size]) for i in range(len(chunk_data)//chunk_size)]
 
     def _check_cmd_response(self, packet):
@@ -621,10 +633,12 @@ class KeyplusKeyboard(object):
             self._check_cmd_response(response)
             address_pos += FLASH_WRITE_PACKET_LEN;
             length_remaining -= FLASH_WRITE_PACKET_LEN
+
         # Writing to address 0xffffff ends flash write.
         finish_packet = bytearray([0xff]*64)
         finish_packet[0] = CMD_WRITE_FLASH
-        self.hid_write(finish_packet);
+        self.hid_write(finish_packet)
+        self._check_cmd_response( self.hid_read(timeout=30) ) # check response
 
     def update_settings_section(self, settings_data, keep_rf):
         assert(isinstance(keep_rf, bool))
@@ -670,6 +684,10 @@ class KeyplusKeyboard(object):
         chunk_list = self._get_chunks(layout_data, FLASH_WRITE_PACKET_LEN)
 
         self._write_flash_chunks(chunk_list, end_address)
+
+    def _test_update_layout(self):
+        data = [i & 0xff for i in range(self.firmware_info.layout_flash_size)]
+        self.update_layout_section(data)
 
     def erase_settings_section(self):
         self.update_settings_section(bytearray(), keep_rf=False)
