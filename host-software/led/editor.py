@@ -441,10 +441,10 @@ class Window(QWidget):
         self.view.setFont(keyFont)
 
         test_items = [
-            # ("60%", os.path.join("layouts", "60-percent.json")),
-            # ("dox-left",  os.path.join("layouts", "dox-left.json")),
-            # ("dox-right", os.path.join("layouts", "dox-right.json")),
-            # ("jemini-v5", os.path.join("layouts", "jemini-v5.json")),
+            ("dox-left",  os.path.join("layouts", "dox-left.json")),
+            ("dox-right", os.path.join("layouts", "dox-right.json")),
+            ("60%", os.path.join("layouts", "60-percent.json")),
+            ("jemini-v5", os.path.join("layouts", "jemini-v5.json")),
             ("ortho-left",  os.path.join("layouts", "ortho_4x6.json")),
             ("ortho-right", os.path.join("layouts", "ortho_4x6.json")),
         ]

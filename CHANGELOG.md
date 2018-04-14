@@ -27,10 +27,14 @@ Internal changes:
 * `keyplus-cli` add commands to dump the raw hex of the layout and settings section
 * `keyplus-cli` is now able to update RF, layout, and ID separately.
 
+* `keyplus-flasher` add support for kp_boot_32u4 bootloader
+
 * `firmware` add new `chip_id` concept to firmware settings allowing the
   `python-api` to discover what microcontroller the keyboard is using.
 * `firmware` rework flash writing commands so that is possible to update only a
   portion of the layout.
+* `firmware` layout updates can now be performed without the USB device
+  needing to be reset
 * `firmware-xmega` now utilizes the IRQ pin in receive mode
 * `firmware-xmega` add arbitrary pin mapping to matrix scanning algorithm. It
   should now be possible to use any pins as row/columns.

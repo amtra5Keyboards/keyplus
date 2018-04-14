@@ -23,6 +23,9 @@
 #define AT(address) __at (address)
 // sdcc doesn't have no return attribute.
 #define NO_RETURN_ATTR
+// sdcc has no attribute for packed structs, however since the target is 8
+// bit, padding won't be used anyway so it's not needed
+#define ATTR_PACKED
 
 #elif defined(AVR) && defined(__GNUC__)
 
@@ -34,6 +37,7 @@
 #define PRAM
 #define ROM __flash
 #define WEAK __attribute__((weak))
+#define ATTR_PACKED __attribute__((packed))
 #define AT(address)
 #define NO_RETURN_ATTR __ATTR_NORETURN__
 
@@ -92,6 +96,9 @@
 /// assertion fails.
 #define NO_RETURN_ATTR
 
+/// Compiler attribute to specify no padding in C structs
+#define ATTR_PACKED
+
 // TODO: probably won't use these
 // #define IRAM
 // #define PRAM
@@ -110,12 +117,14 @@
 #define bit_t bool
 #endif
 
-// TODO: The names of these functions are very common and probably will cause
-// naming conflicts in the future. Should probably rename them.
 #define SIGN(x) ((x) == 0 ? 0 : ((x) < 0 ? -1 : +1))
-#define LSB(x) ((x) & 0xff)
-#define MSB(x) (((x) >> 8) & 0xff)
+
+#define LSB_U16(x) ((x) & 0xff)
+#define MSB_U16(x) (((x) >> 8) & 0xff)
+
+#ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
 
 /// Perform integer division and round up instead of down
 ///

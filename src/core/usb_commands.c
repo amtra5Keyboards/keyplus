@@ -134,10 +134,16 @@ void cmd_ok(void) {
 }
 
 void cmd_reset(uint8_t reset_type) {
-    if (reset_type == RESET_TYPE_HARDWARE) {
+    // NOTE: if the device had a critical error, we assume that the software
+    // reset is not guaranteed to work correctly, so we use a proper reset
+    // in that case.
+    if (reset_type == RESET_TYPE_HARDWARE || has_critical_error()) {
         reset_mcu();
     } else if (reset_type == RESET_TYPE_SOFTWARE) {
-        // TODO: software reset
+        software_reset();
+        if (has_critical_error()) {
+            reset_mcu();
+        }
     }
 }
 
@@ -188,17 +194,15 @@ void cmd_send_layer(uint8_t kb_id) {
     send_vendor_report();
 }
 
+#if USE_SECONDARY_BOOTLOADER
 /// Resets into the Logitech unifying receiver bootloader.
 void cmd_logitech_bootloader(void) {
     bootloader_jmp_2();
 }
+#endif
 
 static void cmd_custom_bootloader(void) {
     bootloader_jmp();
-}
-
-static void cmd_unifying_pairing(void) {
-    unifying_begin_pairing();
 }
 
 static void erase_page_range(uint16_t start_page, uint16_t page_count) {
@@ -332,9 +336,13 @@ void parse_cmd(void) {
         case CMD_LAYER_STATE: {
             cmd_send_layer(data1);
         } break;
+
+#if USE_SECONDARY_BOOTLOADER
         case CMD_LOGITECH_BOOTLOADER: {
             cmd_logitech_bootloader();
         } break;
+#endif
+
 #ifndef NO_MATRIX
         case CMD_SET_PASSTHROUGH_MODE: {
             if (g_scan_plan.mode == MATRIX_SCANNER_MODE_NO_MATRIX ) {
@@ -504,9 +512,12 @@ void parse_cmd(void) {
             cmd_read_layout();
         } break;
 
+#if USE_NRF24
         case CMD_UNIFYING_PAIR: {
-            cmd_unifying_pairing();
+            unifying_begin_pairing();
         } break;
+#endif
+
         default: {
             cmd_error(CMD_ERROR_UNKNOWN_CMD);
         } break;

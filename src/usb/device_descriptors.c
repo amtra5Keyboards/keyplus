@@ -170,7 +170,7 @@ ROM const usb_config_desc_keyboard_t usb_config_desc = {
     {
         .bLength          = sizeof(usb_endpoint_desc_t),
         .bDescriptorType  = USB_DESC_ENDPOINT,
-        .bEndpointAddress = USB_DIR_IN | EP_NUM_VENDOR,
+        .bEndpointAddress = USB_DIR_IN | EP_NUM_VENDOR_IN,
         .bmAttributes     = USB_EP_TYPE_INT,
         .wMaxPacketSize   = EP_SIZE_VENDOR,
         .bInterval        = REPORT_INTERVAL_VENDOR_IN,
@@ -179,7 +179,7 @@ ROM const usb_config_desc_keyboard_t usb_config_desc = {
     {
         .bLength          = sizeof(usb_endpoint_desc_t),
         .bDescriptorType  = USB_DESC_ENDPOINT,
-        .bEndpointAddress = USB_DIR_OUT | EP_NUM_VENDOR,
+        .bEndpointAddress = USB_DIR_OUT | EP_NUM_VENDOR_OUT,
         .bmAttributes     = USB_EP_TYPE_INT,
         .wMaxPacketSize   = EP_SIZE_VENDOR,
         .bInterval        = REPORT_INTERVAL_VENDOR_OUT,
@@ -237,6 +237,12 @@ ROM const usb_config_desc_keyboard_t usb_config_desc = {
 ROM const uint16_t usb_string_desc_0[2] = {
     USB_STRING_DESC_SIZE(sizeof(usb_string_desc_0)),
     HID_LANG_ID(HID_LANG_ENGLISH, HID_SUBLANG_ENGLISH_US),
+};
+
+// language id in string 0 descriptor
+ROM const uint16_t usb_string_desc_1[8] = {
+    USB_STRING_DESC_SIZE(sizeof(usb_string_desc_1)),
+    'k', 'e', 'y', 'p', 'l', 'u', 's'
 };
 
 #ifdef USE_WEBUSB

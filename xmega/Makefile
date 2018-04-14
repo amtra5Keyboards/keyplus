@@ -30,6 +30,12 @@ VPATH += $(XMEGA_PATH)
 INC_PATHS += \
 	-I$(KEYPLUS_PATH)
 
+# USB_VID = 6666
+# USB_PID = 1111
+
+USB_VID = 1209
+USB_PID = BB00
+
 #######################################################################
 #                        board config options                         #
 #######################################################################
@@ -49,6 +55,8 @@ include $(KEYPLUS_PATH)/key_handlers/key_handlers.mk
 include $(XMEGA_PATH)/xusb/makefile
 include $(XMEGA_PATH)/xusb/xmega/makefile
 include $(XMEGA_PATH)/hardware/hardware.mk
+
+include $(KEYPLUS_PATH)/arch/avr/avr.mk
 
 #######################################################################
 #                         programmer options                          #
@@ -73,7 +81,6 @@ CFLAGS += -fno-jump-tables
 
 # List C source files here.
 C_SRC += \
-	aes.c \
 	debug.c \
 	flash.c \
 	fuses.c \
@@ -83,7 +90,6 @@ C_SRC += \
 	main.c \
 	matrix_scanner.c \
 	io_map.c \
-	nonce.c \
 	power.c \
 	timer.c \
 	ws2812.c \
@@ -127,7 +133,9 @@ endif
 
 # TODO: enable/disable nrf24 and i2c at run time using flash settings
 ifeq ($(USE_NRF24), 1)
-  C_SRC += nrf24.c
+  C_SRC += \
+	aes.c \
+	nrf24.c
 endif
 
 CDEFS += -DUSE_CHECK_PIN=$(USE_CHECK_PIN)
@@ -197,8 +205,11 @@ MERGED_HEX="$(basename $(TARGET_HEX))-$(LAYOUT_NAME).hex"
 
 all: fuse lock $(MERGED_HEX)
 
+$(LAYOUT_FILE):
+
 $(MERGED_HEX): $(TARGET_HEX) $(LAYOUT_FILE) $(RF_FILE)
 	 $(KEYPLUS_CLI) program \
+		$(KEYPLUS_CLI_EXTRA) \
 		--new-id $(ID) \
 		--layout "$(LAYOUT_FILE)" \
 		--rf "$(RF_FILE)" \
@@ -208,14 +219,14 @@ $(MERGED_HEX): $(TARGET_HEX) $(LAYOUT_FILE) $(RF_FILE)
 		-F chip_name="$(MCU_STRING)" \
 		-F scan_method=fast_row_col \
 
-program: $(MERGED_HEX) program-boot
+.PHONY:
+program: program-boot
 
 # reset a board into bootloader via usb, then program it via the bootloader
 program-boot: $(MERGED_HEX)
 	# ./scripts/flash_hex.sh $< $(MCU)
-	$(KEYPLUS_CLI) bootloader -d 6666:1111
-	sleep 1.5
-	$(XUSBBOOT_CLI) -d 6666:b007 -f $< -mcu $(MCU)
+	$(KEYPLUS_CLI) bootloader -p $(MCU_STRING) | sleep 1.5
+	$(XUSBBOOT_CLI) -f $< -mcu $(MCU)
 
 # program a board that is already in in bootloader mode
 program-boot-2: $(MERGED_HEX)

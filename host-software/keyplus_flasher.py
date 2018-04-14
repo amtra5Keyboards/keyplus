@@ -18,9 +18,10 @@ from PySide.QtCore import Slot, Signal, QAbstractTableModel
 
 from keyplus.layout import KeyplusLayout
 from keyplus.device_info import KeyboardDeviceTarget, KeyboardFirmwareInfo
-import keyplus.chip_id
+from keyplus import chip_id
 from keyplus import KeyplusKeyboard
 from keyplus.exceptions import *
+import keyplus.usb_ids
 
 # TODO: clean up directory structure
 import sys
@@ -29,12 +30,14 @@ import datetime, time, binascii
 import yaml
 import colorama
 import hexdump
+import copy
 
 import easyhid
 import protocol
 import layout.parser
-import io_map.chip_id as chip_id
+# import io_map.chip_id as chip_id
 import xusbboot
+import kp_boot_32u4
 
 STATUS_BAR_TIMEOUT=4500
 
@@ -65,27 +68,39 @@ def msg_box(description="", title="Message"):
 def is_keyplus_device(device):
     if device.interface_number != protocol.DEFAULT_INTERFACE:
         return False
-    return (device.vendor_id, device.product_id) in [(0x6666, 0x1111*i) for i in range(16)]
+    usb_id = (device.vendor_id, device.product_id)
+    if (
+        usb_id in keyplus.usb_ids.KEYPLUS_USB_IDS or
+        usb_id in [(0x6666, 0x1111*i) for i in range(16)]
+    ):
+        return True
+
+def get_boot_loader_type(device):
+    usb_id = (device.vendor_id, device.product_id)
+    info = keyplus.usb_ids.BOOTLOADER_USB_IDS.get(usb_id)
+    if info == None:
+        return None
+    return info.bootloader
+
 
 def is_xusb_bootloader_device(device):
-    # if device.interface_number != xusbboot.DEFAULT_INTERFACE:
-    #     return False
-    return (device.vendor_id, device.product_id) == (xusbboot.DEFAULT_VID, xusbboot.DEFAULT_PID)
+    return get_boot_loader_type(device) == keyplus.usb_ids.BootloaderType.XUSB_BOOT
+
+def is_kp_boot_device(device):
+    return get_boot_loader_type(device) == keyplus.usb_ids.BootloaderType.KP_BOOT_32U4
 
 def is_nrf24lu1p_bootloader_device(device):
-    ID_VENDOR = 0x1915
-    ID_PRODUCT = 0x0101
-    return (device.vendor_id, device.product_id) == (ID_VENDOR, ID_PRODUCT)
+    return get_boot_loader_type(device) == keyplus.usb_ids.BootloaderType.NRF24LU1P_FACTORY
 
 def is_unifying_bootloader_device(device):
     return False
 
 def is_supported_device(device):
-    return is_keyplus_device(device) or is_xusb_bootloader_device(device) or \
-        is_nrf24lu1p_bootloader_device(device) or is_unifying_bootloader_device(device)
+    return is_keyplus_device(device) or is_bootloader_device(device)
 
 def is_bootloader_device(device):
     return is_xusb_bootloader_device(device) or \
+        is_kp_boot_device(device) or \
         is_nrf24lu1p_bootloader_device(device) or \
         is_unifying_bootloader_device(device)
 
@@ -102,7 +117,7 @@ class DeviceWidget(QGroupBox):
         super(DeviceWidget, self).__init__(None)
 
         self.device = device
-        self.label = None
+        self.label = QLabel()
 
         self.initUI()
 
@@ -113,7 +128,7 @@ class DeviceWidget(QGroupBox):
             settingsInfo = protocol.get_device_info(self.device)
             firmwareInfo = protocol.get_firmware_info(self.device)
             self.device.close()
-        except TimeoutError as err:
+        except easyhid.HIDException as err:
             # Incase opening the device fails
             raise Exception ("Error Opening Device: {} | {}:{}"
                     .format(
@@ -121,12 +136,11 @@ class DeviceWidget(QGroupBox):
                         self.device.vendor_id,
                         self.device.product_id
                     ),
-                  file=sys.stderr
             )
 
         if settingsInfo.crc == settingsInfo.computed_crc:
             build_time_str = protocol.timestamp_to_str(settingsInfo.timestamp)
-            self.label = QLabel('{} | {} | Firmware v{}.{}.{}\n'
+            self.label.setText('{} | {} | Firmware v{}.{}.{}\n'
                                 'Device id: {}\n'
                                 'Serial number: {}\n'
                                 'Last time updated: {}'
@@ -144,7 +158,7 @@ class DeviceWidget(QGroupBox):
         else:
             # CRC doesn't match
             if settingsInfo.is_empty:
-                self.label = QLabel('??? | ??? | Firmware v{}.{}.{}\n'
+                self.label.setText('??? | ??? | Firmware v{}.{}.{}\n'
                                     'Warning: Empty settings!\n'
                                     'Serial number: {}\n'
                     .format(
@@ -157,7 +171,7 @@ class DeviceWidget(QGroupBox):
             else:
                 # corrupt settings in the flash
                 build_time_str = protocol.timestamp_to_str(settingsInfo.timestamp)
-                self.label = QLabel('??? | ??? | Firmware v{}.{}.{}\n'
+                self.label.setText('??? | ??? | Firmware v{}.{}.{}\n'
                                     'WARNING: Settings are uninitialized\n'
                                     'Serial number: {}\n'
                     .format(
@@ -174,7 +188,7 @@ class DeviceWidget(QGroupBox):
             self.device.open()
             bootloader_info = xusbboot.get_boot_info(self.device)
             self.device.close()
-        except TimeoutError as err:
+        except easyhid.HIDException as err:
             # Incase opening the device fails
             raise Exception ("Error Opening Device: {} | {}:{}"
                     .format(
@@ -182,10 +196,9 @@ class DeviceWidget(QGroupBox):
                         self.device.vendor_id,
                         self.device.product_id
                     ),
-                  file=sys.stderr
             )
 
-        self.label = QLabel('{} | {} | Bootloader v{}.{}\n'
+        self.label.setText('{} | {} | Bootloader v{}.{}\n'
                             'MCU: {}\n'
                             'Flash size: {}\n'
                             'Serial number: {}\n'
@@ -197,6 +210,32 @@ class DeviceWidget(QGroupBox):
                 bootloader_info.mcu_string,
                 bootloader_info.flash_size,
                 self.device.serial_number
+            )
+        )
+
+    def setup_kp_boot_32u4_label(self):
+        try:
+            boot_dev = kp_boot_32u4.BootloaderDevice(self.device)
+        except easyhid.HIDException as err:
+            # Incase opening the device fails
+            raise Exception ("Error Opening Device: {} | {}:{}"
+                    .format(
+                        self.device.path,
+                        self.device.vendor_id,
+                        self.device.product_id
+                    ),
+            )
+
+        self.label.setText('kp_boot_32u4 - v{}\n'
+                            'MCU: {}\n'
+                            'Flash size: {}    EEPROM size: {}\n'
+                            'Bootloader size: {}\n'
+            .format(
+                boot_dev.version,
+                boot_dev.chip_name,
+                boot_dev.flash_size,
+                boot_dev.eeprom_size,
+                boot_dev.boot_size,
             )
         )
 
@@ -217,7 +256,7 @@ class DeviceWidget(QGroupBox):
         #           file=sys.stderr
         #     )
 
-        self.label = QLabel('nRF24LU1+ Bootloader v{}.{}\n'
+        self.label.setText('nRF24LU1+ Bootloader v{}.{}\n'
                             'MCU: nRF24LU1+\n'
             .format(
                 0,
@@ -227,21 +266,26 @@ class DeviceWidget(QGroupBox):
             )
         )
 
-    def initUI(self):
-        programIcon = QIcon('img/download.png')
-        infoIcon = QIcon('img/info.png')
-
+    def updateLabel(self):
         if is_keyplus_device(self.device):
             self.setup_keyplus_label()
         elif is_xusb_bootloader_device(self.device):
             self.setup_xusb_bootloader_label()
+        elif is_kp_boot_device(self.device):
+            self.setup_kp_boot_32u4_label()
         elif is_nrf24lu1p_bootloader_device(self.device):
             self.setup_nrf24lu1p_label()
         else:
             raise Exception("Unsupported USB device {}:{}".format(
                 self.device.vendor_id, self.device.product_id))
 
-        if self.label == None:
+    def initUI(self):
+        programIcon = QIcon('img/download.png')
+        infoIcon = QIcon('img/info.png')
+
+        self.updateLabel()
+
+        if self.label.text() == "":
             return
 
         self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -385,6 +429,10 @@ class DeviceList(QScrollArea):
         self.setWidget(self.listWidget)
 
         self.updateList()
+
+    # def updateLabels(self):
+    #     for dev in self.deviceWidgets:
+    #         dev.updateLabels()
 
     def updateList(self):
         self.updateCounter += 1
@@ -813,8 +861,10 @@ class Loader(QMainWindow):
         programmingMode = self.fileSelectorWidget.getProgramingInfo()
 
         if is_bootloader_device(target_device) and programmingMode != FileSelector.ScopeFirmware:
-            error_msg_box("Can only upload firmware while bootloader is running. "
-                          "Either reset it, or upload a firmware hex instead")
+            error_msg_box("The device's bootloader is running. "
+                          "Choose 'Update Firmware' from the drop down box "
+                          "to flash new firmware, or reset it to use to run "
+                          "the currently loaded firmware (if any).")
             self.abort_update(target_device)
             return
 
@@ -854,9 +904,22 @@ class Loader(QMainWindow):
             hexdump.hexdump(bytes(layout_data))
 
             with kb:
+                old_name = copy.copy(kb.name)
                 kb.update_settings_section(settings_data, keep_rf=True)
                 kb.update_layout_section(layout_data)
-                kb.reset()
+                if old_name != kb.name:
+                    kb.reset(reset_type=RESET_TYPE_HARDWARE)
+                    needs_label_update = True
+                else:
+                    kb.reset(reset_type=RESET_TYPE_SOFTWARE)
+                    needs_label_update = False
+
+            if needs_label_update:
+                for widget in self.deviceListWidget.deviceWidgets:
+                    try:
+                        widget.updateLabel()
+                    except easyhid.HIDException:
+                        pass
 
             if warnings != []:
                 error_msg_box(
@@ -906,9 +969,22 @@ class Loader(QMainWindow):
                 return
 
             with kb:
+                old_name = copy.copy(kb.name)
                 kb.update_settings_section(settings_data, keep_rf=False)
                 kb.update_layout_section(layout_data)
-                kb.reset()
+                if old_name != kb.name:
+                    kb.reset(reset_type=RESET_TYPE_HARDWARE)
+                    needs_label_update = True
+                else:
+                    kb.reset(reset_type=RESET_TYPE_SOFTWARE)
+                    needs_label_update = False
+
+            if needs_label_update:
+                for widget in self.deviceListWidget.deviceWidgets:
+                    try:
+                        widget.updateLabel()
+                    except easyhid.HIDException:
+                        pass
 
             if warnings != []:
                 error_msg_box(
@@ -931,6 +1007,8 @@ class Loader(QMainWindow):
 
                 if is_xusb_bootloader_device(target_device):
                     self.program_xusb_boot_firmware_hex(target_device, fw_file)
+                elif is_kp_boot_device(target_device):
+                    self.program_kp_boot_32u4_firmware_hex(target_device, fw_file)
                 elif is_keyplus_device(target_device):
                     try:
                         serial_num = target_device.serial_number
@@ -945,6 +1023,8 @@ class Loader(QMainWindow):
                         self.bootloaderProgramTimer.start()
                     except (easyhid.HIDException, protocol.KBProtocolException):
                         error_msg_box("Programming hex file failed: '{}'".format(fw_file))
+                else:
+                    error_msg_box("This bootloader is currently unsupported")
         else:
             try:
                 target_device.close()
@@ -989,6 +1069,16 @@ class Loader(QMainWindow):
             error_msg_box("Error programming the bootloader to hex file: " + str(err))
         finally:
             device.close()
+
+    def program_kp_boot_32u4_firmware_hex(self, device, file_name):
+        try:
+            device.close()
+            boot_dev = kp_boot_32u4.BootloaderDevice(device)
+            with boot_dev:
+                boot_dev.write_flash_hex(file_name)
+                boot_dev.reset_mcu()
+        except Exception as err:
+            error_msg_box("Error programming the bootloader to hex file: " + str(err))
 
     def tryOpenDevicePath2(self, device_path):
         try:
@@ -1039,6 +1129,11 @@ class Loader(QMainWindow):
             protocol.reset_device(device)
         elif is_xusb_bootloader_device(device):
             xusbboot.reset(device)
+        elif is_kp_boot_device(device):
+            device.close()
+            dev = kp_boot_32u4.BootloaderDevice(device)
+            with dev:
+                dev.reset_mcu()
         elif is_nrf24lu1p_bootloader_device(device):
             print("TODO: reset: ", device_path, file=sys.stderr)
         else:
@@ -1154,7 +1249,7 @@ class Loader(QMainWindow):
             firmware_settings,
             error_codes,
         )
-        self.info_window.setModal(True)
+
         self.info_window.exec_()
 
         self.deviceListWidget.updateList()
