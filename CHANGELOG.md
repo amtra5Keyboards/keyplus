@@ -1,5 +1,25 @@
 
-0.3.0 (unreleased)
+0.3.1 (unreleased)
+==================
+
+* `layout` add support for `keycodes` section in the layout file for defining
+  custom special keycodes
+* `layout/keycodes` add support for `hold` key in `keycodes` section
+* `layout/keycodes` add more alternative names to some keycodes: `trns`, `space`, 's_l0`,
+  `s_lctl`, `int1`. Changed `lang_1` to `lang1` etc.
+* `layout/keycodes` add alternative activation method for hold keys. Instead of
+  using a delay to activate the hold key, allow the hold key to be activated
+  when other keys are pressed.
+
+* `firmware` atmega32u4 support
+* `firmware` made the maximum number of supported rows configurable at compile
+  time, and increased the default value from 10 to 18.
+
+* `keyplus-flasher` more error messages
+* `keyplus-flasher` fixed labels not updating properly
+
+
+0.3.0
 ==================
 
 Changes to layout and config files:

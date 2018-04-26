@@ -32,7 +32,7 @@ devices:
         r0c0, r0c1, r0c2, r0c3, r0c4, r0c5,
         r1c0, r1c1, r1c2, r1c3, r1c4, r1c5,
         r2c0, r2c1, r2c2, r2c3, r2c4, r2c5,
-        ____, r3c3, r3c4, r3c5, r3c2, r3c1,
+        r3c3, r3c4, r3c5, r3c2, r3c1,
       ]
 
   right_split:
@@ -50,7 +50,7 @@ devices:
         r0c0, r0c1, r0c2, r0c3, r0c4, r0c5,
         r1c0, r1c1, r1c2, r1c3, r1c4, r1c5,
         r2c0, r2c1, r2c2, r2c3, r2c4, r2c5,
-        r3c4, r3c3, r3c0, r3c1, r3c2, ____,
+        r3c4, r3c3, r3c0, r3c1, r3c2,
       ]
 
   # separate numpad
@@ -68,9 +68,9 @@ devices:
       matrix_map: [
         r0c0, r0c1, r0c2, r0c3,
         r1c0, r1c1, r1c2, r1c3,
-        r2c0, r2c1, r2c2, ____,
+        r2c0, r2c1, r2c2,
         r3c0, r3c1, r3c2, r3c3,
-        r4c0, ____, r4c2, ____,
+        r4c0,       r4c2,
       ]
 
   "jemini acrylic - left":
@@ -93,7 +93,7 @@ devices:
       ]
       debounce:
         debounce_time_press: 5
-        debounce_time_release: 5
+        debounce_time_release: 10
         trigger_time_press: 5
         trigger_time_release: 5
         parasitic_discharge_delay_idle: 30.0
@@ -303,14 +303,25 @@ devices:
     scan_mode: # rf dongle, so don't need a matrix
       mode: no_matrix # options: col_row, pins, no_matrix
 
+
 keycodes:
   SFTEnt:
-    keycode: KC_HOLD
-    delay: 200
+    keycode: hold
     tap_key: enter
     hold_key: sticky_lshift
-    # options:
 
+    activate_type: other_key # activate hold_key when other key is pressed
+    # delay: 200 # currently doesn't do anything for other_key activation
+
+    # activate_type: delay # activate hold_key after delay
+    # delay: 200 # delay in milliseconds
+
+  # space_fn:
+  #   keycode: hold
+  #   delay: 200
+  #   tap_key: space
+  #   hold_key: sticky_l2
+  #   # options:
 
 layouts:
   split_layout:
@@ -318,16 +329,16 @@ layouts:
     layers: [
       [ # layer 0 (colemak)
         [ # left hand
-          tab , q   , w   , f   , p   , g   ,
-          ent , a   , r   , s   , t   , d   ,
-          lalt, z   , x   , c   , v   , b   ,
-          esc , L6  , lctl, spc , L5  ,
+          tab    , q      , w    , f    , p   , g   ,
+          SFTENT , a      , r    , s    , t   , d   ,
+          lalt   , z      , x    , c    , v   , b   ,
+          esc    , L6     , lctl , spc  , L5  ,
         ],
         [ # right hand
-          j   , l   , u   , y   , ";" , "-" ,
-          h   , n   , e   , i   , o   , "'" ,
-          k   , m   , "," , "." , "/" , "`" ,
-          bspc, sticky_lshift, sticky_L4, lgui, esc ,
+          j      , l      , u    , y    , ";" , "-" ,
+          h      , n      , e    , i    , o   , "'" ,
+          k      , m      , ","  , "."  , "/"  , "`" ,
+          bspc   , s_lsft , s_L4 , lgui , esc ,
         ],
       ],
       [ # layer 1 (dvorak)
@@ -441,8 +452,7 @@ layouts:
       [ # layer 0 (colemak)
         [ # left hand
           tab , q   , w   , f   , p   , g   ,
-          # SFTEnt , a   , r   , s   , t   , d   ,
-          ent , a   , r   , s   , t   , d   ,
+          SFTEnt , a   , r   , s   , t   , d   ,
           lalt, z   , x   , c   , v   , b   ,
           esc , L4  , L4  , lctl  , L3  , spc ,
         ],

@@ -48,11 +48,13 @@ ifndef BOOTLOADER
 # BOOTLOADER = lufa_dfu
 endif
 
+ifndef SCANNER_MAX_ROWS
+   SCANNER_MAX_ROWS=18
+endif
+
 #######################################################################
 #                        common build settings                        #
 #######################################################################
-
-include avr-makefile/avr-mega.mk
 
 include $(KEYPLUS_PATH)/core/core.mk
 include $(KEYPLUS_PATH)/usb/usb.mk
@@ -125,22 +127,23 @@ CFLAGS += -I$(BOOTLOADER_PATH)
 # NOTE: haven't tested on all these chips
 ifeq ($(BOOTLOADER), atmel_dfu)
   BOOT_SECTION_START = 0x007000
-  BOOTLOADER_SIZE = 0x1000
+  BOOT_SIZE = 4096
   C_SRC += $(BOOTLOADER_PATH)/atmel_dfu/atmel_bootloader.c
   CFLAGS += -DBOOTLOADER_VID=$(ATMEL_VID)
   CFLAGS += -DBOOTLOADER_PID=$(FLIP_USB_DFU_32u4)
   CFLAGS += -DBOOTLOADER_ATMEL_DFU
 else ifeq ($(BOOTLOADER), lufa_dfu)
   BOOT_SECTION_START = 0x007000
-  BOOTLOADER_SIZE = 0x1000
+  BOOT_SIZE = 4096
   # lufa dfu uses the same VID/PID as the atmel version
   CFLAGS += -DBOOTLOADER_VID=$(ATMEL_VID)
   CFLAGS += -DBOOTLOADER_PID=$(FLIP_USB_DFU_32u4)
   $(error Bootloader lufa_dfu not supported yet.)
 else ifeq ($(BOOTLOADER), kp_boot_32u4)
-  # lufa dfu uses the same VID/PID as the atmel version
+  BOOT_SECTION_START = 0x007C00
+  BOOT_SIZE = 1024
   CFLAGS += -DBOOTLOADER_VID=0x1209
-  CFLAGS += -DBOOTLOADER_PID=0xBB08
+  CFLAGS += -DBOOTLOADER_PID=0xBB05
   CFLAGS += -DBOOTLOADER_KP_BOOT_32U4
   C_SRC += $(BOOTLOADER_PATH)/kp_boot_32u4/interface/kp_boot_32u4.c
 else
@@ -218,7 +221,8 @@ $(MERGED_HEX): $(TARGET_HEX) $(LAYOUT_FILE) $(RF_FILE)
 		-M $(SETTING_ADDR) $(LAYOUT_ADDR) $(LAYOUT_SIZE) \
 		-o "$(MERGED_HEX)" \
 		-F chip_name="$(MCU_STRING)" \
-		-F scan_method=fast_row_col \
+		-F scan_method=basic_scan \
+		-F max_rows=$(SCANNER_MAX_ROWS) \
 
 ATMEL_DFU = bootloaders/atmel_dfu/ATMega32U4-usbdevice_dfu-1_0_0.hex
 
@@ -250,6 +254,7 @@ LOCKBITS = NO_LOCK
 program-lock:
 	$(AVRDUDE_CMD) -U lock:w:$(LOCKBITS):m
 
+include avr-makefile/avr-mega.mk
 include avr-makefile/avr.mk
 include avr-makefile/avr-program.mk
 

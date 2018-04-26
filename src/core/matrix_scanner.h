@@ -10,6 +10,14 @@
 
 #if USE_SCANNER
 #include "core/io_map.h"
+
+#if !defined(MAX_NUM_ROWS)
+/// Max number of rows allowed for the matrix scanner
+#error "MAX_NUM_ROWS needs to be defined"
+#endif
+
+#else
+#define MAX_NUM_ROWS 0
 #endif
 
 /// Max number of keys a split keyboard device can use (16 bytes)
@@ -18,8 +26,6 @@
 /// Size of the bitmap used to store key numbers
 #define KEY_NUMBER_BITMAP_SIZE (MAX_NUM_KEYS/8)
 
-/// Max number of rows allowed for the matrix scanner
-#define MAX_NUM_ROWS 10
 #define MAX_NUM_COLS IO_MAP_GPIO_COUNT
 
 /// How much ram is needed to store the matrix in the matrix scanner module
@@ -50,11 +56,11 @@ typedef enum matrix_internal_scan_method_t {
     /// Also, instead of providing a list of column keys, it should provide
     /// a bit mask for each port indicating which keys are scanned as columns.
     MATRIX_SCANNER_INTERNAL_FAST_ROW_COL = 0x01,
-    /// The SLOW_ROW_COL scanner uses a list of rows and columns, and scans
-    /// each pin one after the other. The flasher should provide both
-    /// the row and column keys as a list of pins. The key number map will be
-    /// `num_rows * num_columns` large with one entry for each (row, col) pair.
-    MATRIX_SCANNER_INTERNAL_SLOW_ROW_COL = 0x02,
+    /// The BASIC scan method only supports PULL-UP resistors on it's column
+    /// pins. For this reason when the host-software lays out the row and
+    /// column pins, it needs to swap the row/col pins around so the matrix
+    /// can be scanned.
+    MATRIX_SCANNER_INTERNAL_BASIC_SCAN = 0x02,
     /// The matrix scanning algorithm is hard coded.
     ///
     /// TODO: decide how the keys are remapped in this case. The key numbers

@@ -22,6 +22,7 @@ from keyplus import chip_id
 from keyplus import KeyplusKeyboard
 from keyplus.exceptions import *
 import keyplus.usb_ids
+from keyplus.debug import DEBUG
 
 # TODO: clean up directory structure
 import sys
@@ -41,12 +42,12 @@ import kp_boot_32u4
 
 STATUS_BAR_TIMEOUT=4500
 
-if 1:
+if DEBUG.gui:
     # debug settings
-    DEFAULT_LAYOUT_FILE = "../layouts/basic_split_test.yaml"
+    DEFAULT_LAYOUT_FILE = "../layouts/1key.yaml"
     DEFAULT_RF_FILE = "../layouts/test_rf_config.yaml"
     DEFAULT_FIRMWARE_FILE = ""
-    DEFAULT_DEVICE_ID = 10
+    DEFAULT_DEVICE_ID = 0
 else:
     DEFAULT_LAYOUT_FILE = ""
     DEFAULT_RF_FILE = ""
@@ -117,36 +118,32 @@ class DeviceWidget(QGroupBox):
         super(DeviceWidget, self).__init__(None)
 
         self.device = device
+        self.has_critical_error = False
         self.label = QLabel()
 
         self.initUI()
 
     # label for generic keyplus device
     def setup_keyplus_label(self):
-        try:
-            self.device.open()
-            settingsInfo = protocol.get_device_info(self.device)
-            firmwareInfo = protocol.get_firmware_info(self.device)
-            self.device.close()
-        except easyhid.HIDException as err:
-            # Incase opening the device fails
-            raise Exception ("Error Opening Device: {} | {}:{}"
-                    .format(
-                        self.device.path,
-                        self.device.vendor_id,
-                        self.device.product_id
-                    ),
-            )
+        self.device.open()
+        settingsInfo = protocol.get_device_info(self.device)
+        firmwareInfo = protocol.get_firmware_info(self.device)
+        errorInfo = protocol.get_error_info(self.device)
+        self.has_critical_error = errorInfo.has_critical_error()
+        self.device.close()
 
         if settingsInfo.crc == settingsInfo.computed_crc:
             build_time_str = protocol.timestamp_to_str(settingsInfo.timestamp)
+            device_name = settingsInfo.device_name_str()
+            device_name = device_name.strip('\x00').strip('\xff').strip()
+
             self.label.setText('{} | {} | Firmware v{}.{}.{}\n'
                                 'Device id: {}\n'
                                 'Serial number: {}\n'
                                 'Last time updated: {}'
                 .format(
                     self.device.manufacturer_string,
-                    self.device.product_string,
+                    device_name,
                     firmwareInfo.version_major,
                     firmwareInfo.version_minor,
                     firmwareInfo.version_patch,
@@ -187,7 +184,6 @@ class DeviceWidget(QGroupBox):
         try:
             self.device.open()
             bootloader_info = xusbboot.get_boot_info(self.device)
-            self.device.close()
         except easyhid.HIDException as err:
             # Incase opening the device fails
             raise Exception ("Error Opening Device: {} | {}:{}"
@@ -276,8 +272,33 @@ class DeviceWidget(QGroupBox):
         elif is_nrf24lu1p_bootloader_device(self.device):
             self.setup_nrf24lu1p_label()
         else:
+            self.device.close()
             raise Exception("Unsupported USB device {}:{}".format(
                 self.device.vendor_id, self.device.product_id))
+        self.device.close()
+        self.updateStyle()
+
+    def updateStyle(self):
+        if self.has_critical_error:
+            self.label.setStyleSheet("""
+            QLabel {
+                background: #F88;
+                border: 1px solid;
+                padding: 2px;
+                font: 11pt;
+            }
+            """)
+        else:
+            self.label.setStyleSheet("""
+            QLabel {
+                background: #FFF;
+                                     self.updateLabel
+                border: 1px solid;
+                padding: 2px;
+                font: 11pt;
+            }
+            """)
+
 
     def initUI(self):
         programIcon = QIcon('img/download.png')
@@ -289,14 +310,7 @@ class DeviceWidget(QGroupBox):
             return
 
         self.label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.label.setStyleSheet("""
-        QLabel {
-            background: #FFF;
-            border: 1px solid;
-            padding: 2px;
-            font: 11pt;
-        }
-        """)
+        self.updateStyle()
         self.label.setFixedHeight(90)
         self.label.setMinimumWidth(390)
 
@@ -894,32 +908,27 @@ class Loader(QMainWindow):
             except (KeyplusError, IOError) as err:
                 error_msg_box(str(err))
                 return
+            except (yaml.YAMLError) as err:
+                error_msg_box("YAML syntax error: \n" + str(err))
+                self.abort_update(target_device)
 
-            print('#'*80)
-            print("settings_data:", type(settings_data), settings_data)
-            print('#'*80)
-            print("layout_data:", type(layout_data), layout_data)
-            print('#'*80)
-            hexdump.hexdump(bytes(settings_data))
-            hexdump.hexdump(bytes(layout_data))
+            if DEBUG.layout:
+                print("settings_data:", type(settings_data), settings_data)
+                hexdump.hexdump(bytes(settings_data))
+                print("layout_data:", type(layout_data), layout_data)
+                hexdump.hexdump(bytes(layout_data))
 
             with kb:
-                old_name = copy.copy(kb.name)
                 kb.update_settings_section(settings_data, keep_rf=True)
                 kb.update_layout_section(layout_data)
-                if old_name != kb.name:
-                    kb.reset(reset_type=RESET_TYPE_HARDWARE)
-                    needs_label_update = True
-                else:
-                    kb.reset(reset_type=RESET_TYPE_SOFTWARE)
-                    needs_label_update = False
+                kb.reset(reset_type=RESET_TYPE_SOFTWARE)
+                kb.disconnect()
 
-            if needs_label_update:
-                for widget in self.deviceListWidget.deviceWidgets:
-                    try:
-                        widget.updateLabel()
-                    except easyhid.HIDException:
-                        pass
+            for widget in self.deviceListWidget.deviceWidgets:
+                try:
+                    widget.updateLabel()
+                except easyhid.HIDException:
+                    pass
 
             if warnings != []:
                 error_msg_box(
@@ -966,25 +975,26 @@ class Loader(QMainWindow):
             except (KeyplusError, IOError) as err:
                 error_msg_box(str(err))
                 self.abort_update(target_device)
+            except (yaml.YAMLError) as err:
+                error_msg_box("YAML syntax error: \n" + str(err))
+                self.abort_update(target_device)
+            except Exception as err:
+                error_msg_box(str(err))
+                self.abort_update(target_device)
                 return
 
             with kb:
                 old_name = copy.copy(kb.name)
                 kb.update_settings_section(settings_data, keep_rf=False)
                 kb.update_layout_section(layout_data)
-                if old_name != kb.name:
-                    kb.reset(reset_type=RESET_TYPE_HARDWARE)
-                    needs_label_update = True
-                else:
-                    kb.reset(reset_type=RESET_TYPE_SOFTWARE)
-                    needs_label_update = False
+                kb.reset(reset_type=RESET_TYPE_SOFTWARE)
+                kb.disconnect()
 
-            if needs_label_update:
-                for widget in self.deviceListWidget.deviceWidgets:
-                    try:
-                        widget.updateLabel()
-                    except easyhid.HIDException:
-                        pass
+            for widget in self.deviceListWidget.deviceWidgets:
+                try:
+                    widget.updateLabel()
+                except easyhid.HIDException:
+                    pass
 
             if warnings != []:
                 error_msg_box(
@@ -1030,7 +1040,7 @@ class Loader(QMainWindow):
                 target_device.close()
             except:
                 pass
-            raise Exception("Unimplementend programming mode")
+            raise Exception("Unimplemented programming mode")
 
 
     def programFirmwareHex(self, boot_vid, boot_pid, serial_num, file_name):
@@ -1082,7 +1092,6 @@ class Loader(QMainWindow):
 
     def tryOpenDevicePath2(self, device_path):
         try:
-            print(device_path)
             device = easyhid.Enumeration().find(path=device_path)[0]
             return KeyplusKeyboard(device)
         except Exception as err:

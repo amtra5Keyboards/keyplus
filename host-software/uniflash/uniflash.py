@@ -399,7 +399,10 @@ if __name__ == "__main__":
         is_ti_device = False
 
         if (len(ti_devices) + len(nrf_devices) == 0):
-            print("Couldn't find any devices to program", file=sys.stderr)
+            print("Couldn't find any devices to program. Make sure that they "
+                  "have first entered the bootloader by running: "
+                  "`./uniflash.py icp` or `./keyplus-cli.py bootloader`.", file=sys.stderr)
+            exit(1);
         elif (len(ti_devices) + len(nrf_devices) > 1):
             print(
                 "Found multiple matching devices, try disconnecting the "
@@ -407,6 +410,7 @@ if __name__ == "__main__":
                 .format([(hex(dev.idVendor), hex(dev.idProduct)) for dev in boot_devices]),
                 file=sys.stderr
             )
+            exit(1);
         elif (len(ti_devices) == 1):
             dev = ti_devices[0]
             print(
@@ -417,6 +421,7 @@ if __name__ == "__main__":
             )
             boot_dev = boot_devices[0]
             is_ti_device = True
+            exit(1);
         elif (len(nrf_devices) == 1):
             dev = nrf_devices[0]
             print(
@@ -424,6 +429,13 @@ if __name__ == "__main__":
                 .format(hex(dev.idVendor), hex(dev.idProduct))
             )
             boot_dev = boot_devices[0]
+        else:
+            # shouldn't reach this
+            print(
+                "Couldn't find any devices running the Logitech bootloader. "
+            )
+            exit(1)
+
 
         detach_kernel_drivers(boot_dev, [0, 1])
 

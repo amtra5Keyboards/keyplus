@@ -189,7 +189,12 @@ class DebugCommand(GenericDeviceCommand):
 class PassthroughCommand(GenericDeviceCommand):
     def __init__(self):
         super(PassthroughCommand, self).__init__(
-            'Prints the matrix row and column pairs of pressed keys. '
+            'Prints the matrix row and column pairs of pressed keys from a '
+            'device directly connected by USB. \n'
+            '\n'
+            'NOTE: If you have a wired/wireless '
+            'split device, you will need to connect it directly by USB for this '
+            'function to work.'
         )
 
         self.arg_parser.add_argument(
@@ -568,7 +573,9 @@ class ProgramCommand(GenericDeviceCommand):
             print_error("Must provide firmware settings with -F flag.")
             exit(EXIT_COMMAND_ERROR)
 
-        known_settings = ['chip_name', 'scan_method']
+        known_settings = [
+            'chip_name', 'scan_method', 'max_rows'
+        ]
         firmware_settings = {}
         for option in args.firmware_settings:
             try:
@@ -596,6 +603,7 @@ class ProgramCommand(GenericDeviceCommand):
         try:
             firmware_info.chip_id = get_chip_id_from_name(firmware_settings['chip_name'])
             firmware_info.set_internal_scan_method(firmware_settings['scan_method'])
+            firmware_info.set_max_rows(firmware_settings['max_rows'])
         except KeyplusSettingsError as err:
             print_error(str(err))
             exit(EXIT_COMMAND_ERROR)

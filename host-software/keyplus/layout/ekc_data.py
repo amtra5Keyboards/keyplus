@@ -13,8 +13,9 @@ from keyplus.exceptions import *
 import keyplus.keycodes as keycodes
 
 class EKCData(object):
-    def __init__(self, data):
+    def __init__(self, data=None, addr=None):
         self.data = data
+        self.addr = addr
 
     def set_keycode_map_function(self, kc_map_function):
         self.kc_map_function = kc_map_function
@@ -29,28 +30,53 @@ class EKCHoldKey(EKCData):
     # Layout option:
     #   1: kc_hold_key
     #   1: delay
-    #   1: options
+    #   1: option_data
     #   1: hold_key
     #   1: tap_key
 
     SIZE = 5 * 2
 
     DEFAULT_DELAY = 200
+    DEFAULT_ACTIVATE_TYPE = 'delay'
 
-    def __init__(self, tap_key, hold_key, delay=200, options=None, kc_map_function=None):
+    HOLD_KEY_ACTIVATE_DELAY     =  (1 << 0)
+    HOLD_KEY_ACTIVATE_OTHER_KEY =  (1 << 1)
+
+    ACTIVATE_TYPE_MAP = {
+        'delay': (1 << 0),
+        'other_key': (1 << 1),
+    }
+
+
+    def __init__(self, tap_key=None, hold_key=None, delay=200,
+                 activate_type=None, kc_map_function=None):
         self.tap_key = tap_key
         self.hold_key = hold_key
         self.delay = delay
-        self.options = options
         self.kc_map_function = kc_map_function
+        self.activate_type = activate_type or EKCHoldKey.DEFAULT_ACTIVATE_TYPE
 
     def size(self):
         return EKCHoldKey.SIZE
+
+    def check_activate_type_valid(self, type_):
+        if type_ not in EKCHoldKey.ACTIVATE_TYPE_MAP:
+            raise KeyplusSettingsError(
+                "Unknown 'activate_type', got '{}', but expected one of: {}"
+                .format(
+                    self.activate_type,
+                    list(EKCHoldKey.ACTIVATE_TYPE_MAP.keys())
+                )
+            )
 
     def to_bytes(self):
         result = bytearray(EKCHoldKey.SIZE)
 
         option_data = 0
+
+        self.check_activate_type_valid(self.activate_type)
+
+        option_data |= EKCHoldKey.ACTIVATE_TYPE_MAP[self.activate_type]
 
         # _16(KC_HOLD_KEY), \
         # _16(200), \
@@ -67,7 +93,7 @@ class EKCHoldKey(EKCData):
 
         return result
 
-    def parse_json(self, keycode_name, json_obj=None, parser_info=None):
+    def parse_json(self, kc_name, json_obj=None, parser_info=None):
 
         print_warnings = False
 
@@ -76,34 +102,43 @@ class EKCHoldKey(EKCData):
             print_warnings = True
             parser_info = KeyplusParserInfo(
                 "<EKCHoldKeycode Dict>",
-                {keycode_name : json_obj}
+                {kc_name : json_obj}
             )
-        parser_info.enter(keycode_name)
+
+        parser_info.enter(kc_name)
 
         # Get the tap key field
         self.keycode = parser_info.try_get(
             'keycode',
             field_type=str
         )
-        assert_equal(self.keycode, 'kc_hold')
+        assert_equal(self.keycode, 'hold')
 
         # Get the hold key field
         self.hold_key = parser_info.try_get(
             'hold_key',
-            type=str
+            field_type=str
         )
 
         # Get the tap key field
         self.tap_key = parser_info.try_get(
             'tap_key',
-            type=str
+            field_type=str
         )
 
         # Get the delay key field
-        self.delay = try_get(
+        self.delay = parser_info.try_get(
             'delay',
             field_type=int,
             default=EKCHoldKey.DEFAULT_DELAY
+        )
+
+        # Get the delay key field
+        self.activate_type = parser_info.try_get(
+            'activate_type',
+            field_type=str,
+            field_valid_values=EKCHoldKey.ACTIVATE_TYPE_MAP.keys(),
+            default=EKCHoldKey.DEFAULT_ACTIVATE_TYPE,
         )
 
         # Finish parsing `device_name`
@@ -140,6 +175,7 @@ class EKCDataTable(EKCData):
         child_id = len(self.children)
         self.children.append(child)
         self.children_addresses.append(self.current_size)
+        child.addr = self.current_size
         self.current_size += child.size()
         return child_id
 

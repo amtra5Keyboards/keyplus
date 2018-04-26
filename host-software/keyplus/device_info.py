@@ -19,10 +19,38 @@ class KeyboardPinMapping(object):
     def __init__(self):
         self.mode = MATRIX_SCANNER_MODE_NO_MATRIX
         self.internal_scan_method = MATRIX_SCANNER_INTERNAL_NONE
+        self.max_rows = None
         self.row_pins = None
         self.column_pins = None
         self.key_number_map = None
         self.io_mapper = None
+
+        assert( not (
+            (self.internal_scan_method == MATRIX_SCANNER_INTERNAL_BASIC_SCAN) \
+            and (self.mode == MATRIX_SCANNER_MODE_ROW_COL) \
+        ))
+
+    def _pin_map_to_bytes(self):
+        result = bytearray(0)
+
+        assert_less_eq(len(self.row_pins), self.max_rows+1)
+        row_pin_padding = self.max_rows - len(self.row_pins)
+        result += bytearray(self.row_pins) + bytearray([0]*row_pin_padding)
+
+        col_pin_padding = self.io_mapper.get_gpio_count() - len(self.column_pins)
+        result += bytearray(self.column_pins) + bytearray([0]*col_pin_padding)
+        result += bytearray(self.key_number_map)
+
+        # Check that the resulting object has the correct size
+        row_size = max(self.column_pins) + 1
+        total_size = (
+            self.max_rows +
+            self.io_mapper.get_gpio_count() +
+            len(self.row_pins) * row_size
+        )
+        assert_equal(len(result), total_size)
+
+        return result
 
     def to_bytes(self):
         result = bytearray(0)
@@ -33,24 +61,15 @@ class KeyboardPinMapping(object):
             # NOTE: This should work for both the matrix and direct wiring
             # pin scanning modes, since the pin mode emulates matrix scanning
             # with one row.
-            assert_less_eq(len(self.row_pins), MAX_NUM_ROWS+1)
-            row_pin_padding = MAX_NUM_ROWS - len(self.row_pins)
-            result += bytearray(self.row_pins) + bytearray([0]*row_pin_padding)
-
-            col_pin_padding = self.io_mapper.get_gpio_count() - len(self.column_pins)
-            result += bytearray(self.column_pins) + bytearray([0]*col_pin_padding)
-            result += bytearray(self.key_number_map)
-
-            # Check that the resulting object has the correct size
-            row_size = max(self.column_pins) + 1
-            total_size = (
-                MAX_NUM_ROWS +
-                self.io_mapper.get_gpio_count() +
-                len(self.row_pins) * row_size
-            )
-            assert_equal(len(result), total_size)
-        elif self.internal_scan_method == MATRIX_SCANNER_INTERNAL_SLOW_ROW_COL:
-            raise KeyplusSettingsError("Unimplemented internal scan method")
+            result += self._pin_map_to_bytes();
+        elif self.internal_scan_method == MATRIX_SCANNER_INTERNAL_BASIC_SCAN:
+            if self.mode == MATRIX_SCANNER_MODE_PIN_VCC:
+                raise KeyplusSettingsError(
+                    "The target device can't support the `pin_vcc` scan method. "
+                    "Using the BASIC_SCAN method it can only support: "
+                    "`pin_gnd`, `col_row` and `row_col`."
+                )
+            result += self._pin_map_to_bytes();
         else:
             raise KeyplusSettingsError(
                 "Unknown internal scan method '{}'".format(self.internal_scan_method)
@@ -69,7 +88,7 @@ class KeyboardPinMapping(object):
         elif self.internal_scan_method == MATRIX_SCANNER_INTERNAL_FAST_ROW_COL:
             # row_data
             pos = 0
-            row_size = MAX_NUM_ROWS
+            row_size = self.scanner
             row_data = raw_data[:row_size]
             pos += row_size
             # column_data
@@ -83,6 +102,8 @@ class KeyboardPinMapping(object):
             self.row_pins = list(row_data[:scan_plan.rows])
             self.column_pins = list(column_data[:scan_plan.cols])
             self.key_number_map = matrix_map_data
+        elif self.internal_scan_method == MATRIX_SCANNER_INTERNAL_BASIC_SCAN:
+            raise KeyplusSettingsError("Unimplemented: decoding BASIC_SCAN")
         else:
             raise KeyplusSettingsError(
                 "Unknown internal scan method '{}'".format(self.internal_scan_method)
@@ -272,6 +293,12 @@ class KeyboardFirmwareInfo(keyplus.cdata_types.firmware_info_t):
             self.internal_scan_method = new_value
         else:
             raise TypeError("Expected a string or integer for scan_method")
+
+    def set_max_rows(self, new_value):
+        try:
+            self.max_rows = int(new_value)
+        except:
+            raise TypeError("Expected an integer for max_rows")
 
     def internal_scan_method_from_str(self, scan_method):
         if scan_method in INTERNAL_SCAN_METHOD_NAME_TABLE:
